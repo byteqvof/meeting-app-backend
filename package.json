@@ -1,0 +1,18 @@
+{
+  "scripts": {
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link",
+    "db:push": "supabase db push",
+    "deploy:functions": "npm run deploy:activities && npm run deploy:profiles",
+    "deploy:function:activities-nearby": "supabase functions deploy activities-nearby",
+    "deploy:function:activities-create": "supabase functions deploy activities-create",
+    "deploy:function:activities-for-user": "supabase functions deploy activities-for-user",
+    "deploy:function:profiles": "supabase functions deploy profiles",
+    "deploy:activities": "npm run deploy:function:activities-nearby && npm run deploy:function:activities-create && npm run deploy:function:activities-for-user",
+    "deploy:profiles": "npm run deploy:function:profiles",
+    "deploy": "npm run db:push && npm run deploy:functions"
+  },
+  "dependencies": {
+    "@supabase/server": "^1.1.0"
+  }
+}

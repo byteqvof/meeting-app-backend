@@ -1,0 +1,13 @@
+project_id = "meeting-app-backend"
+
+[functions.activities-nearby]
+verify_jwt = true
+
+[functions.activities-create]
+verify_jwt = true
+
+[functions.activities-for-user]
+verify_jwt = true
+
+[functions.profiles]
+verify_jwt = true
