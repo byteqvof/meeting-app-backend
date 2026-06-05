@@ -9,5 +9,14 @@ verify_jwt = true
 [functions.activities-for-user]
 verify_jwt = true
 
+[functions.activities-participation]
+verify_jwt = true
+
+[functions.activities-agenda]
+verify_jwt = true
+
+[functions.activity-chat]
+verify_jwt = true
+
 [functions.profiles]
 verify_jwt = true

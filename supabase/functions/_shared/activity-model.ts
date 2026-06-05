@@ -40,6 +40,8 @@ export interface ActivityWithProfiles extends Activity {
   host: Profile | null
   participants: Profile[]
   participants_count: number
+  is_joined: boolean
+  available_spots: number
 }
 
 export interface NearbyActivity extends ActivityWithProfiles {
@@ -76,6 +78,34 @@ export interface CreateActivityRequest {
   metadata?: Record<string, unknown>
 }
 
+export interface ActivityParticipationRequest {
+  activity_id: string
+  action?: 'join' | 'leave'
+  join?: boolean
+}
+
+export interface ActivityParticipationUpdate {
+  activity_id: string
+  is_joined: boolean
+  participants: Profile[]
+  participants_count: number
+  available_spots: number
+}
+
+export interface ActivityChatMessage {
+  id: string
+  activity_id: string
+  sender_id: string
+  body: string
+  created_at: string
+  sender: Profile | null
+}
+
+export interface SendActivityChatMessageRequest {
+  activity_id: string
+  body: string
+}
+
 export interface NearbyActivitiesResponse {
   activities: NearbyActivity[]
   filters: {
@@ -97,8 +127,34 @@ export interface UserActivitiesResponse {
   }
 }
 
+export interface ActivityAgendaResponse {
+  hosted: UserActivity[]
+  joined: UserActivity[]
+  filters: {
+    user_id: string
+    limit: number
+  }
+}
+
+export interface ActivityChatMessagesResponse {
+  messages: ActivityChatMessage[]
+  filters: {
+    activity_id: string
+    limit: number
+    before: string | null
+  }
+}
+
+export interface SendActivityChatMessageResponse {
+  message: ActivityChatMessage
+}
+
 export interface CreateActivityResponse {
   activity: Activity & {
     category: ActivityCategory
   }
+}
+
+export interface ActivityParticipationResponse {
+  participation: ActivityParticipationUpdate
 }
