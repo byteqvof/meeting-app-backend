@@ -519,6 +519,14 @@ export default {
           onboarding_required: profileId === userId && profile === null,
         }
 
+        if (response.onboarding_required) {
+          logger.info('profile_missing_onboarding_required', {
+            profile_id: profileId,
+          })
+
+          return jsonResponse(response, { headers: responseHeaders })
+        }
+
         logger.info('profile_fetch_succeeded', {
           profile_id: profileId,
           found: profile !== null,
