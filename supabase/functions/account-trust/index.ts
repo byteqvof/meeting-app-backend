@@ -3,8 +3,8 @@ import type {
   AccountTrustResponse,
   ProfileTrust,
 } from "../_shared/profile-model.ts";
-import { errorResponse, jsonResponse } from "../_shared/http.ts";
-import { createRequestLogger } from "../_shared/logger.ts";
+import { errorResponse, jsonResponse, readJsonBody } from "../_shared/http.ts";
+import { createRequestLogger, errorFields } from "../_shared/logger.ts";
 
 interface TrustRow {
   phone_verified: boolean;
@@ -15,6 +15,11 @@ interface TrustRow {
   age_verified: boolean;
   reputation_level: ProfileTrust["reputation_level"];
   reputation_score: number | string;
+}
+
+interface AccountTrustRequest {
+  action?: string;
+  verified_at?: string;
 }
 
 function mapTrust(row: TrustRow): ProfileTrust {
@@ -28,6 +33,26 @@ function mapTrust(row: TrustRow): ProfileTrust {
     reputation_level: row.reputation_level ?? "new_member",
     reputation_score: Number(row.reputation_score ?? 0),
   };
+}
+
+function devPhoneVerificationAllowed(): boolean {
+  return (
+    Deno.env.get("TOCH_ALLOW_DEV_PHONE_VERIFICATION")?.trim().toLowerCase() ===
+      "true"
+  );
+}
+
+function verifiedAtFromInput(input: AccountTrustRequest): string {
+  if (!input.verified_at) {
+    return new Date().toISOString();
+  }
+
+  const parsed = new Date(input.verified_at);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("verified_at is invalid");
+  }
+
+  return parsed.toISOString();
 }
 
 export default {
@@ -58,6 +83,76 @@ export default {
         undefined,
         responseHeaders,
       );
+    }
+
+    if (req.method === "POST") {
+      try {
+        const input = await readJsonBody<AccountTrustRequest>(req);
+        if (input.action === "dev_verify_phone") {
+          if (!devPhoneVerificationAllowed()) {
+            logger.warn("dev_phone_verification_disabled");
+            return errorResponse(
+              "Development phone verification is disabled",
+              403,
+              undefined,
+              responseHeaders,
+            );
+          }
+
+          const verifiedAt = verifiedAtFromInput(input);
+          const { data, error } = await ctx.supabaseAdmin
+            .from("profile_trust")
+            .upsert(
+              {
+                profile_id: userId,
+                phone_verified: true,
+                phone_verified_at: verifiedAt,
+              },
+              { onConflict: "profile_id" },
+            )
+            .select(
+              `
+                phone_verified,
+                phone_verified_at,
+                identity_status,
+                identity_method,
+                identity_completed_at,
+                age_verified,
+                reputation_level,
+                reputation_score
+              `,
+            )
+            .single();
+
+          if (error || data === null) {
+            logger.error("dev_phone_verification_failed", { error });
+            return errorResponse(
+              "Could not sync development phone verification",
+              500,
+              error,
+              responseHeaders,
+            );
+          }
+
+          const response: AccountTrustResponse = {
+            trust: mapTrust(data as TrustRow),
+          };
+
+          logger.info("dev_phone_verification_succeeded", {
+            phone_verified: response.trust.phone_verified,
+          });
+
+          return jsonResponse(response, { headers: responseHeaders });
+        }
+      } catch (error) {
+        logger.warn("request_failed", errorFields(error));
+        return errorResponse(
+          error instanceof Error ? error.message : "Invalid request",
+          400,
+          undefined,
+          responseHeaders,
+        );
+      }
     }
 
     const { data, error } = await ctx.supabase
