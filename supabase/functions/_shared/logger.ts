@@ -1,13 +1,13 @@
-type LogLevel = 'info' | 'warn' | 'error'
+type LogLevel = "info" | "warn" | "error";
 
-type LogFields = Record<string, unknown>
+type LogFields = Record<string, unknown>;
 
 export interface RequestLogger {
-  requestId: string
-  startedAt: number
-  info: (event: string, fields?: LogFields) => void
-  warn: (event: string, fields?: LogFields) => void
-  error: (event: string, fields?: LogFields) => void
+  requestId: string;
+  startedAt: number;
+  info: (event: string, fields?: LogFields) => void;
+  warn: (event: string, fields?: LogFields) => void;
+  error: (event: string, fields?: LogFields) => void;
 }
 
 function emit(
@@ -25,40 +25,40 @@ function emit(
     event,
     elapsed_ms: Date.now() - startedAt,
     ...fields,
+  };
+
+  const message = JSON.stringify(payload);
+
+  if (level === "error") {
+    console.error(message);
+    return;
   }
 
-  const message = JSON.stringify(payload)
-
-  if (level === 'error') {
-    console.error(message)
-    return
+  if (level === "warn") {
+    console.warn(message);
+    return;
   }
 
-  if (level === 'warn') {
-    console.warn(message)
-    return
-  }
-
-  console.info(message)
+  console.info(message);
 }
 
 export function createRequestLogger(
   functionName: string,
   req: Request,
 ): RequestLogger {
-  const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID()
-  const startedAt = Date.now()
+  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+  const startedAt = Date.now();
 
   return {
     requestId,
     startedAt,
     info: (event, fields) =>
-      emit('info', functionName, requestId, startedAt, event, fields),
+      emit("info", functionName, requestId, startedAt, event, fields),
     warn: (event, fields) =>
-      emit('warn', functionName, requestId, startedAt, event, fields),
+      emit("warn", functionName, requestId, startedAt, event, fields),
     error: (event, fields) =>
-      emit('error', functionName, requestId, startedAt, event, fields),
-  }
+      emit("error", functionName, requestId, startedAt, event, fields),
+  };
 }
 
 export function errorFields(error: unknown): LogFields {
@@ -67,16 +67,16 @@ export function errorFields(error: unknown): LogFields {
       error_name: error.name,
       error_message: error.message,
       error_stack: error.stack,
-    }
+    };
   }
 
-  if (typeof error === 'object' && error !== null) {
-    return { error }
+  if (typeof error === "object" && error !== null) {
+    return { error };
   }
 
-  return { error_message: String(error) }
+  return { error_message: String(error) };
 }
 
 export function roundCoordinate(value: number): number {
-  return Math.round(value * 1000) / 1000
+  return Math.round(value * 1000) / 1000;
 }
