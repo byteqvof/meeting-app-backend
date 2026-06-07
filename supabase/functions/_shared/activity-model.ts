@@ -65,6 +65,7 @@ export interface NearbyActivity extends ActivityWithProfiles {
 
 export interface UserActivity extends ActivityWithProfiles {
   distance_km: number | null;
+  chat_summary?: ActivityChatSummary | null;
 }
 
 export interface NearbyActivitiesRequest {
@@ -138,10 +139,24 @@ export interface ActivityChatMessage {
   client_message_id: string | null;
 }
 
+export interface ActivityChatSummary {
+  last_message_id: string | null;
+  last_message: string | null;
+  last_message_at: string | null;
+  last_sender_id: string | null;
+  last_sender: Profile | null;
+  unread_count: number;
+}
+
 export interface SendActivityChatMessageRequest {
   activity_id: string;
   body: string;
   client_message_id?: string | null;
+}
+
+export interface MarkActivityChatReadRequest {
+  activity_id: string;
+  message_id?: string | null;
 }
 
 export interface ActivityCompletionRequest {
@@ -225,6 +240,10 @@ export interface ActivityChatMessagesResponse {
 
 export interface SendActivityChatMessageResponse {
   message: ActivityChatMessage;
+}
+
+export interface MarkActivityChatReadResponse {
+  summary: ActivityChatSummary;
 }
 
 export interface ActivityCompletionResponse {

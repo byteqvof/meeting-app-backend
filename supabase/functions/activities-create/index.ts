@@ -118,7 +118,7 @@ function normalizeCreateRequest(input: CreateActivityRequest) {
     description: requiredString(input.description, "description", 10, 4000),
     latitude: requiredNumber(input.latitude, "latitude", -90, 90),
     longitude: requiredNumber(input.longitude, "longitude", -180, 180),
-    address_line: optionalString(input.address_line, "address_line", 240),
+    address_line: requiredString(input.address_line, "address_line", 3, 240),
     city: optionalString(input.city, "city", 120),
     country_code: optionalCountryCode(input.country_code),
     starts_at: startsAt,

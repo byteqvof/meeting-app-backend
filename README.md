@@ -257,3 +257,62 @@ public zijn, omdat `avatar_url` een permanente public Storage URL is.
 ```text
 DELETE /functions/v1/profiles
 ```
+
+## Development en deployment
+
+Installeer dependencies:
+
+```powershell
+npm install
+```
+
+Link het Supabase project en push databasewijzigingen:
+
+```powershell
+npm run supabase:login
+npm run supabase:link
+npm run db:push
+```
+
+Deploy alle Edge Functions:
+
+```powershell
+npm run deploy:functions
+```
+
+Of database en functions samen:
+
+```powershell
+npm run deploy
+```
+
+## Secrets
+
+Gebruik `.env.example` alleen als referentie. Echte waarden horen in Supabase
+secrets, niet in git:
+
+```powershell
+npx supabase secrets set TOCH_ALLOW_DEV_PHONE_VERIFICATION=false
+npx supabase secrets set FCM_PROJECT_ID=your-firebase-project-id
+npx supabase secrets set FCM_SERVICE_ACCOUNT_JSON='<full service account json>'
+```
+
+Voor een testomgeving mag fake phone verification tijdelijk aan:
+
+```powershell
+npx supabase secrets set TOCH_ALLOW_DEV_PHONE_VERIFICATION=true
+npm run deploy:function:account-trust
+```
+
+Zet dit nooit aan voor productie.
+
+## Firebase hygiene
+
+Een Firebase service-account private key is server-side geheim materiaal. Als een
+key in chat, logs of git terechtkomt, trek hem direct in via Google Cloud IAM,
+maak een nieuwe key aan en sla alleen die nieuwe JSON op als Supabase secret
+`FCM_SERVICE_ACCOUNT_JSON`.
+
+Push-notificaties zijn best-effort: chatberichten worden eerst opgeslagen in de
+database, daarna volgt realtime broadcast en daarna pas FCM. Een FCM-fout mag
+chat nooit laten falen.

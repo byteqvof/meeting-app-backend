@@ -1,11 +1,46 @@
 import { withSupabase } from "npm:@supabase/server";
 import type {
   ActivityAgendaResponse,
+  ActivityChatSummary,
   UserActivity,
 } from "../_shared/activity-model.ts";
 import { errorResponse, jsonResponse } from "../_shared/http.ts";
 import { createRequestLogger, errorFields } from "../_shared/logger.ts";
 import { optionalInteger } from "../_shared/validation.ts";
+
+async function withChatSummaries({
+  supabase,
+  userId,
+  activities,
+  logger,
+}: {
+  supabase: { rpc: (fn: string, args: Record<string, unknown>) => any };
+  userId: string;
+  activities: UserActivity[];
+  logger: ReturnType<typeof createRequestLogger>;
+}): Promise<UserActivity[]> {
+  return await Promise.all(
+    activities.map(async (activity) => {
+      const { data, error } = await supabase.rpc("activity_chat_summary_json", {
+        p_activity_id: activity.id,
+        p_user_id: userId,
+      });
+
+      if (error) {
+        logger.warn("chat_summary_failed", {
+          activity_id: activity.id,
+          error,
+        });
+        return activity;
+      }
+
+      return {
+        ...activity,
+        chat_summary: data as ActivityChatSummary,
+      };
+    }),
+  );
+}
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -59,7 +94,7 @@ export default {
         "list_activities_for_user",
         {
           p_user_id: authenticatedUserId,
-          p_status: null,
+          p_status: "published",
           p_limit: limit,
         },
       );
@@ -110,10 +145,29 @@ export default {
         );
       }
 
+      const hostedWithSummaries = await withChatSummaries({
+        supabase: ctx.supabase,
+        userId: authenticatedUserId,
+        activities: (hosted ?? []) as UserActivity[],
+        logger,
+      });
+      const joinedWithSummaries = await withChatSummaries({
+        supabase: ctx.supabase,
+        userId: authenticatedUserId,
+        activities: (joined ?? []) as UserActivity[],
+        logger,
+      });
+      const completedWithSummaries = await withChatSummaries({
+        supabase: ctx.supabase,
+        userId: authenticatedUserId,
+        activities: (completed ?? []) as UserActivity[],
+        logger,
+      });
+
       const response: ActivityAgendaResponse = {
-        hosted: (hosted ?? []) as UserActivity[],
-        joined: (joined ?? []) as UserActivity[],
-        completed: (completed ?? []) as UserActivity[],
+        hosted: hostedWithSummaries,
+        joined: joinedWithSummaries,
+        completed: completedWithSummaries,
         filters: {
           user_id: authenticatedUserId,
           limit,
