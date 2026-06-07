@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.activities-create]
 verify_jwt = true
 
+[functions.activities-update]
+verify_jwt = true
+
 [functions.activities-for-user]
 verify_jwt = true
 
@@ -19,6 +22,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.activity-chat]
+verify_jwt = true
+
+[functions.push-token]
 verify_jwt = true
 
 [functions.activities-complete]
