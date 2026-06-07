@@ -66,6 +66,8 @@ export interface NearbyActivity extends ActivityWithProfiles {
 export interface UserActivity extends ActivityWithProfiles {
   distance_km: number | null;
   chat_summary?: ActivityChatSummary | null;
+  participation_status?: "joined" | "pending" | "cancelled";
+  can_send_chat?: boolean;
 }
 
 export interface NearbyActivitiesRequest {
@@ -137,6 +139,7 @@ export interface ActivityChatMessage {
   created_at: string;
   sender: Profile | null;
   client_message_id: string | null;
+  message_type: "user" | "system";
 }
 
 export interface ActivityChatSummary {
@@ -145,7 +148,9 @@ export interface ActivityChatSummary {
   last_message_at: string | null;
   last_sender_id: string | null;
   last_sender: Profile | null;
+  last_message_type?: "user" | "system" | null;
   unread_count: number;
+  can_send_chat?: boolean;
 }
 
 export interface SendActivityChatMessageRequest {
