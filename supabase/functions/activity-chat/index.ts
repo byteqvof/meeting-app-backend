@@ -65,8 +65,44 @@ interface FcmServiceAccount {
   token_uri?: string;
 }
 
+interface FcmConfig {
+  projectId: string;
+  serviceAccount: FcmServiceAccount;
+}
+
 interface PushTokenRow {
   token: string;
+  platform?: string | null;
+}
+
+interface ActivityRow {
+  title?: string | null;
+}
+
+interface PushRecipientRow {
+  profile_id: string;
+}
+
+interface FcmSendErrorPayload {
+  error?: {
+    status?: string;
+    details?: Array<{
+      "@type"?: string;
+      errorCode?: string;
+    }>;
+  };
+}
+
+interface FcmSendResult {
+  ok: boolean;
+  status: number;
+  errorCode: string | null;
+  disabledToken: boolean;
+}
+
+interface PushTarget {
+  token: string;
+  platform: string | null;
 }
 
 function base64Url(input: ArrayBuffer | string): string {
@@ -148,16 +184,163 @@ async function createFcmAccessToken(
   return payload.access_token;
 }
 
-function fcmConfig(): { projectId: string; serviceAccount: FcmServiceAccount } | null {
+function fcmConfig({
+  logger,
+  activityId,
+  messageId,
+}: {
+  logger: ReturnType<typeof createRequestLogger>;
+  activityId: string;
+  messageId: string;
+}): FcmConfig | null {
   const projectId = Deno.env.get("FCM_PROJECT_ID")?.trim();
   const serviceAccountJson = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON")?.trim();
   if (!projectId || !serviceAccountJson) {
+    logger.info("push_fcm_config_missing", {
+      activity_id: activityId,
+      message_id: messageId,
+      has_project_id: Boolean(projectId),
+      has_service_account_json: Boolean(serviceAccountJson),
+    });
     return null;
   }
+
+  let serviceAccount: FcmServiceAccount;
+  try {
+    serviceAccount = JSON.parse(serviceAccountJson) as FcmServiceAccount;
+  } catch (error) {
+    logger.warn("push_fcm_config_invalid_json", {
+      activity_id: activityId,
+      message_id: messageId,
+      ...errorFields(error),
+    });
+    return null;
+  }
+
+  if (!serviceAccount.client_email || !serviceAccount.private_key) {
+    logger.warn("push_fcm_config_missing_service_account_fields", {
+      activity_id: activityId,
+      message_id: messageId,
+      has_client_email: Boolean(serviceAccount.client_email),
+      has_private_key: Boolean(serviceAccount.private_key),
+    });
+    return null;
+  }
+
   return {
     projectId,
-    serviceAccount: JSON.parse(serviceAccountJson) as FcmServiceAccount,
+    serviceAccount,
   };
+}
+
+function notificationBody(message: ActivityChatMessage): string {
+  const senderName = message.sender?.display_name?.trim() || "Iemand";
+  const preview = (message.body ?? "").toString().replace(/\s+/g, " ").trim();
+  if (preview.length === 0) {
+    return `${senderName}: nieuw bericht`;
+  }
+  return `${senderName}: ${preview}`;
+}
+
+function fcmMessageForTarget({
+  target,
+  activityTitle,
+  body,
+  message,
+}: {
+  target: PushTarget;
+  activityTitle: string;
+  body: string;
+  message: ActivityChatMessage;
+}): Record<string, unknown> {
+  const data = {
+    type: "activity_chat",
+    activity_id: message.activity_id,
+    message_id: message.id,
+    chat_title: activityTitle,
+    chat_body: body,
+    group_key: `activity_chat:${message.activity_id}`,
+  };
+
+  if (target.platform === "android") {
+    return {
+      token: target.token,
+      data,
+      android: {
+        priority: "HIGH",
+      },
+    };
+  }
+
+  return {
+    token: target.token,
+    notification: {
+      title: activityTitle,
+      body,
+    },
+    data,
+    android: {
+      priority: "HIGH",
+      notification: {
+        channel_id: "activity_chat",
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+    },
+    apns: {
+      headers: {
+        "apns-priority": "10",
+      },
+      payload: {
+        aps: {
+          sound: "default",
+          "thread-id": message.activity_id,
+        },
+      },
+    },
+  };
+}
+
+async function fcmSendErrorCode(response: Response): Promise<string | null> {
+  try {
+    const payload = await response.json() as FcmSendErrorPayload;
+    const fcmError = payload.error?.details?.find((detail) =>
+      detail["@type"]?.includes("google.firebase.fcm.v1.FcmError")
+    );
+    return fcmError?.errorCode ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function shouldDisablePushToken(errorCode: string | null): boolean {
+  return errorCode === "UNREGISTERED" || errorCode === "INVALID_ARGUMENT";
+}
+
+async function disablePushTokenBestEffort({
+  supabaseAdmin,
+  token,
+  logger,
+}: {
+  supabaseAdmin: any;
+  token: string;
+  logger: ReturnType<typeof createRequestLogger>;
+}): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin
+      .from("device_push_tokens")
+      .update({ enabled: false, last_seen_at: new Date().toISOString() })
+      .eq("token", token);
+
+    if (error) {
+      throw error;
+    }
+    logger.info("push_token_disabled_after_fcm_reject");
+  } catch (error) {
+    logger.warn(
+      "push_token_disable_after_fcm_reject_failed",
+      errorFields(error),
+    );
+  }
 }
 
 async function sendChatPushBestEffort({
@@ -169,29 +352,35 @@ async function sendChatPushBestEffort({
   message: ActivityChatMessage;
   logger: ReturnType<typeof createRequestLogger>;
 }): Promise<void> {
-  const config = fcmConfig();
-  if (config === null) {
-    logger.info("push_skipped_missing_fcm_config", {
+  try {
+    logger.info("push_pipeline_started", {
       activity_id: message.activity_id,
       message_id: message.id,
+      sender_id: message.sender_id,
     });
-    return;
-  }
 
-  try {
-    const { data: participants, error: participantsError } = await supabaseAdmin
-      .from("activity_participants")
-      .select("profile_id")
-      .eq("activity_id", message.activity_id)
-      .eq("status", "joined");
-
-    if (participantsError) {
-      throw participantsError;
+    const config = fcmConfig({
+      logger,
+      activityId: message.activity_id,
+      messageId: message.id,
+    });
+    if (config === null) {
+      logger.info("push_skipped_missing_fcm_config", {
+        activity_id: message.activity_id,
+        message_id: message.id,
+      });
+      return;
     }
+
+    logger.info("push_fcm_config_ready", {
+      activity_id: message.activity_id,
+      message_id: message.id,
+      project_id: config.projectId,
+    });
 
     const { data: activity, error: activityError } = await supabaseAdmin
       .from("activities")
-      .select("organizer_id,title")
+      .select("title")
       .eq("id", message.activity_id)
       .single();
 
@@ -199,21 +388,43 @@ async function sendChatPushBestEffort({
       throw activityError;
     }
 
-    const recipientIds = new Set<string>(
-      ((participants ?? []) as Array<{ profile_id: string }>)
-        .map((participant) => participant.profile_id)
-        .filter((profileId) => profileId !== message.sender_id),
-    );
-    if (activity?.organizer_id && activity.organizer_id !== message.sender_id) {
-      recipientIds.add(activity.organizer_id);
+    logger.info("push_activity_loaded", {
+      activity_id: message.activity_id,
+      message_id: message.id,
+      has_title: Boolean((activity as ActivityRow | null)?.title),
+    });
+
+    const { data: recipients, error: recipientsError } = await supabaseAdmin
+      .rpc("activity_chat_push_recipient_ids", {
+        p_activity_id: message.activity_id,
+        p_sender_id: message.sender_id,
+      });
+
+    if (recipientsError) {
+      throw recipientsError;
     }
+
+    const recipientIds = new Set<string>(
+      ((recipients ?? []) as PushRecipientRow[])
+        .map((recipient) => recipient.profile_id?.toString() ?? "")
+        .filter((profileId) => profileId.length > 0),
+    );
+    logger.info("push_recipients_resolved", {
+      activity_id: message.activity_id,
+      message_id: message.id,
+      recipient_count: recipientIds.size,
+    });
     if (recipientIds.size === 0) {
+      logger.info("push_skipped_no_recipients", {
+        activity_id: message.activity_id,
+        message_id: message.id,
+      });
       return;
     }
 
     const { data: tokenRows, error: tokenError } = await supabaseAdmin
       .from("device_push_tokens")
-      .select("token")
+      .select("token,platform")
       .eq("enabled", true)
       .in("profile_id", [...recipientIds]);
 
@@ -221,20 +432,54 @@ async function sendChatPushBestEffort({
       throw tokenError;
     }
 
-    const tokens = [...new Set(
-      ((tokenRows ?? []) as PushTokenRow[]).map((row) => row.token),
-    )];
-    if (tokens.length === 0) {
+    const pushTargetsByToken = new Map<string, PushTarget>();
+    for (const row of (tokenRows ?? []) as PushTokenRow[]) {
+      const token = row.token?.toString() ?? "";
+      if (token.length === 0 || pushTargetsByToken.has(token)) {
+        continue;
+      }
+      pushTargetsByToken.set(token, {
+        token,
+        platform: row.platform?.toString().trim().toLowerCase() || null,
+      });
+    }
+    const pushTargets = [...pushTargetsByToken.values()];
+    logger.info("push_tokens_resolved", {
+      activity_id: message.activity_id,
+      message_id: message.id,
+      recipient_count: recipientIds.size,
+      token_count: pushTargets.length,
+      android_token_count: pushTargets.filter((target) =>
+        target.platform === "android"
+      ).length,
+      ios_token_count: pushTargets.filter((target) => target.platform === "ios")
+        .length,
+    });
+    if (pushTargets.length === 0) {
+      logger.info("push_skipped_no_tokens", {
+        activity_id: message.activity_id,
+        message_id: message.id,
+        recipient_count: recipientIds.size,
+      });
       return;
     }
 
+    logger.info("push_fcm_access_token_request_started", {
+      activity_id: message.activity_id,
+      message_id: message.id,
+    });
     const accessToken = await createFcmAccessToken(config.serviceAccount);
+    logger.info("push_fcm_access_token_created", {
+      activity_id: message.activity_id,
+      message_id: message.id,
+    });
     const endpoint =
       `https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`;
-    const senderName = message.sender?.display_name ?? "Iemand";
-    const activityTitle = activity?.title ?? "Nieuwe chat";
+    const activityTitle = ((activity as ActivityRow | null)?.title ?? "")
+      .trim() || "Nieuwe chat";
+    const body = notificationBody(message);
 
-    await Promise.all(tokens.map(async (token) => {
+    const sendResults = await Promise.all(pushTargets.map(async (target) => {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -242,41 +487,69 @@ async function sendChatPushBestEffort({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: {
-            token,
-            notification: {
-              title: activityTitle,
-              body: `${senderName}: nieuw bericht`,
-            },
-            data: {
-              type: "activity_chat",
-              activity_id: message.activity_id,
-              message_id: message.id,
-            },
-            android: {
-              priority: "HIGH",
-              notification: {
-                channel_id: "activity_chat",
-                click_action: "FLUTTER_NOTIFICATION_CLICK",
-              },
-            },
-          },
+          message: fcmMessageForTarget({ target, activityTitle, body, message }),
         }),
       });
 
       if (!response.ok) {
+        const errorCode = await fcmSendErrorCode(response);
         logger.warn("push_send_failed", {
           status: response.status,
+          error_code: errorCode,
           activity_id: message.activity_id,
           message_id: message.id,
+          platform: target.platform,
         });
+        if (shouldDisablePushToken(errorCode)) {
+          await disablePushTokenBestEffort({
+            supabaseAdmin,
+            token: target.token,
+            logger,
+          });
+          return {
+            ok: false,
+            status: response.status,
+            errorCode,
+            disabledToken: true,
+          } satisfies FcmSendResult;
+        }
+        return {
+          ok: false,
+          status: response.status,
+          errorCode,
+          disabledToken: false,
+        } satisfies FcmSendResult;
       }
+
+      return {
+        ok: true,
+        status: response.status,
+        errorCode: null,
+        disabledToken: false,
+      } satisfies FcmSendResult;
     }));
+
+    const statusCounts = sendResults.reduce<Record<string, number>>(
+      (counts, result) => {
+        const key = result.errorCode ?? result.status.toString();
+        counts[key] = (counts[key] ?? 0) + 1;
+        return counts;
+      },
+      {},
+    );
+    const successCount = sendResults.filter((result) => result.ok).length;
+    const disabledTokenCount = sendResults.filter((result) =>
+      result.disabledToken
+    ).length;
 
     logger.info("push_send_attempted", {
       activity_id: message.activity_id,
       message_id: message.id,
-      token_count: tokens.length,
+      token_count: pushTargets.length,
+      success_count: successCount,
+      failure_count: sendResults.length - successCount,
+      disabled_token_count: disabledTokenCount,
+      status_counts: statusCounts,
     });
   } catch (error) {
     logger.warn("push_best_effort_failed", errorFields(error));
@@ -483,13 +756,21 @@ export default {
         status: 200,
         activity_id: response.message.activity_id,
         message_id: response.message.id,
+        was_inserted: response.message.was_inserted,
       });
 
-      await sendChatPushBestEffort({
-        supabaseAdmin: ctx.supabaseAdmin,
-        message: response.message,
-        logger,
-      });
+      if (response.message.was_inserted !== false) {
+        await sendChatPushBestEffort({
+          supabaseAdmin: ctx.supabaseAdmin,
+          message: response.message,
+          logger,
+        });
+      } else {
+        logger.info("push_skipped_duplicate_client_message", {
+          activity_id: response.message.activity_id,
+          message_id: response.message.id,
+        });
+      }
 
       return jsonResponse(response, { headers: responseHeaders });
     } catch (error) {

@@ -1,5 +1,13 @@
 project_id = "meeting-app-backend"
 
+[auth]
+enabled = true
+site_url = "meetingsapp://auth-callback"
+additional_redirect_urls = [
+  "meetingsapp://auth-callback",
+  "meetingsapp://auth-callback/email-verification",
+]
+
 [functions.activities-nearby]
 verify_jwt = true
 

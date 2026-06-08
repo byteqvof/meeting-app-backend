@@ -35,6 +35,7 @@ export interface Activity {
   currency: string;
   image_url: string | null;
   status: ActivityStatus;
+  featured: boolean;
   group_type: "open" | "approval" | "closed";
   min_reputation_level:
     | "new_member"
@@ -140,6 +141,7 @@ export interface ActivityChatMessage {
   sender: Profile | null;
   client_message_id: string | null;
   message_type: "user" | "system";
+  was_inserted?: boolean;
 }
 
 export interface ActivityChatSummary {

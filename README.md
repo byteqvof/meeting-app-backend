@@ -286,6 +286,22 @@ Of database en functions samen:
 npm run deploy
 ```
 
+## Supabase Auth redirects
+
+Emailverificatie in de Flutter app gebruikt Supabase Auth met PKCE en custom
+scheme redirects. Zet in Supabase Dashboard > Authentication > URL
+Configuration de redirect allowlist minimaal op:
+
+```text
+meetingsapp://auth-callback
+meetingsapp://auth-callback/email-verification
+```
+
+De signup-flow geeft `emailRedirectTo` mee, zodat bevestigingsmails niet meer
+naar `localhost:3000/token` gaan. Laat de email template de standaard
+`{{ .ConfirmationURL }}` gebruiken; Supabase vult daar de juiste redirect URL in.
+Voor lokale Supabase development staan dezelfde URLs in `supabase/config.toml`.
+
 ## Secrets
 
 Gebruik `.env.example` alleen als referentie. Echte waarden horen in Supabase
