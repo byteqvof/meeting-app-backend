@@ -258,6 +258,54 @@ public zijn, omdat `avatar_url` een permanente public Storage URL is.
 DELETE /functions/v1/profiles
 ```
 
+## Vrienden
+
+De `friends` Edge Function gebruikt `auth: 'user'`.
+
+Status van een profiel:
+
+```text
+GET /functions/v1/friends?profile_id=<profile-uuid>
+```
+
+Lijst met vrienden en openstaande verzoeken:
+
+```text
+GET /functions/v1/friends
+```
+
+Acties:
+
+```json
+{
+  "action": "request",
+  "profile_id": "00000000-0000-0000-0000-000000000000"
+}
+```
+
+`action` mag `request`, `accept`, `decline` of `remove` zijn. Friend requests
+worden server-side geweigerd als een van beide gebruikers de ander heeft
+geblokkeerd.
+
+## Lifecycle maintenance
+
+De `activities-maintenance` Edge Function gebruikt `auth: 'secret'` en
+`verify_jwt = false`. Gebruik deze voor cron jobs of handmatig onderhoud.
+
+De function doet twee dingen:
+
+- gepubliceerde activiteiten automatisch afronden na `completion_grace_days`;
+- chatberichten van afgelopen activiteiten verwijderen na `chat_retention_days`.
+
+Handmatig draaien:
+
+```powershell
+npx supabase functions invoke activities-maintenance --body '{"completion_grace_days":1,"chat_retention_days":7}'
+```
+
+Voor publieke beta kun je deze dagelijks schedulen. Wil je oude beta-data direct
+opruimen, gebruik tijdelijk `chat_retention_days: 0`.
+
 ## Development en deployment
 
 Installeer dependencies:

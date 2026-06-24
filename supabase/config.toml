@@ -36,10 +36,16 @@ verify_jwt = true
 [functions.activity-attendance]
 verify_jwt = true
 
+[functions.activities-maintenance]
+verify_jwt = false
+
 [functions.profiles]
 verify_jwt = true
 
 [functions.safety-actions]
+verify_jwt = true
+
+[functions.friends]
 verify_jwt = true
 
 [functions.account-trust]
