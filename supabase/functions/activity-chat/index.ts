@@ -33,6 +33,10 @@ function statusForChatError(message: string): number {
     return 403;
   }
 
+  if (message.includes("ACTIVITY_CHAT_CLOSED")) {
+    return 409;
+  }
+
   if (message.includes("CHAT_MESSAGE_INVALID")) {
     return 400;
   }
@@ -50,6 +54,10 @@ function messageForChatError(message: string): string {
 
   if (message.includes("ACTIVITY_CHAT_FORBIDDEN")) {
     return "Join this activity before opening the chat";
+  }
+
+  if (message.includes("ACTIVITY_CHAT_CLOSED")) {
+    return "This activity has ended. The chat is closed.";
   }
 
   if (message.includes("CHAT_MESSAGE_INVALID")) {

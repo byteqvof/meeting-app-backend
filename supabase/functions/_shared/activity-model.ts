@@ -140,8 +140,8 @@ export interface ActivityChatMessage {
   created_at: string;
   sender: Profile | null;
   client_message_id: string | null;
-  message_type: "user" | "system";
-  was_inserted?: boolean;
+  message_type?: string | null;
+  was_inserted?: boolean | null;
 }
 
 export interface ActivityChatSummary {
