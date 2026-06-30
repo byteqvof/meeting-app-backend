@@ -3,6 +3,7 @@
     "supabase:login": "npx supabase login",
     "supabase:link": "npx supabase link",
     "db:push": "npx supabase db push",
+    "push:test": "node scripts/send-test-push.mjs",
     "deploy:functions": "npm run deploy:activities && npm run deploy:profiles && npm run deploy:safety",
     "deploy:function:activities-nearby": "npx supabase functions deploy activities-nearby",
     "deploy:function:activities-detail": "npx supabase functions deploy activities-detail",

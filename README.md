@@ -334,6 +334,22 @@ Of database en functions samen:
 npm run deploy
 ```
 
+Voor chat push-notificaties zijn minimaal deze migrations/functions nodig:
+
+- `device_push_tokens`, zodat de app FCM tokens kan registreren via
+  `push-token`;
+- `activity_chat_push_recipient_ids`, zodat de server de ontvangers van een
+  chatbericht kan bepalen;
+- Edge Functions `push-token` en `activity-chat`.
+
+Als je alleen push opnieuw wilt uitrollen:
+
+```powershell
+npm run db:push
+npm run deploy:function:push-token
+npm run deploy:function:activity-chat
+```
+
 ## Supabase Auth redirects
 
 Emailverificatie in de Flutter app gebruikt Supabase Auth met PKCE en custom
@@ -357,9 +373,13 @@ secrets, niet in git:
 
 ```powershell
 npx supabase secrets set TOCH_ALLOW_DEV_PHONE_VERIFICATION=false
-npx supabase secrets set FCM_PROJECT_ID=your-firebase-project-id
+npx supabase secrets set FCM_PROJECT_ID=toch-1dcaf
 npx supabase secrets set FCM_SERVICE_ACCOUNT_JSON='<full service account json>'
 ```
+
+`FCM_SERVICE_ACCOUNT_JSON` is de volledige Firebase service-account JSON uit het
+zelfde Firebase project als de iOS app. Deze server-side key is iets anders dan
+de APNs Auth Key die je in de Firebase Console uploadt voor iOS delivery.
 
 Voor een testomgeving mag fake phone verification tijdelijk aan:
 
@@ -380,3 +400,40 @@ maak een nieuwe key aan en sla alleen die nieuwe JSON op als Supabase secret
 Push-notificaties zijn best-effort: chatberichten worden eerst opgeslagen in de
 database, daarna volgt realtime broadcast en daarna pas FCM. Een FCM-fout mag
 chat nooit laten falen.
+
+Voor een iOS end-to-end test moeten de Supabase function logs bij een nieuw
+chatbericht deze events tonen:
+
+- `push_pipeline_started`
+- `push_fcm_config_ready`
+- `push_recipients_resolved`
+- `push_tokens_resolved` met `ios_token_count > 0`
+- `push_send_attempted` met `success_count > 0`
+
+Als `push_fcm_config_missing` verschijnt, ontbreken `FCM_PROJECT_ID` of
+`FCM_SERVICE_ACCOUNT_JSON`. Als `ios_token_count` nul blijft, controleer dan of
+de iOS app met `TOCH_ENABLE_PUSH=true` draait, notificatierechten heeft gekregen
+en een rij in `device_push_tokens` heeft met `platform = 'ios'`.
+
+### Handmatige test push
+
+Gebruik het lokale script om buiten de chat-flow om een push te sturen. Het
+script gebruikt FCM HTTP v1 en kan het nieuwste enabled token ophalen voor een
+profile:
+
+```sh
+export FCM_PROJECT_ID=toch-1dcaf
+export GOOGLE_APPLICATION_CREDENTIALS=~/Downloads/toch-1dcaf-firebase-adminsdk.json
+export SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+
+npm run push:test -- --profile-id <profile-uuid> --platform ios
+```
+
+Je kunt ook direct naar een FCM token sturen:
+
+```sh
+npm run push:test -- --token <fcm-token> --platform ios
+```
+
+Voeg `--validate-only` toe om Firebase alleen de payload te laten valideren
+zonder de push te bezorgen.
