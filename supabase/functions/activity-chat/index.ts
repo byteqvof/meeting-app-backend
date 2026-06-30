@@ -94,11 +94,18 @@ interface PushRecipientRow {
 interface FcmSendErrorPayload {
   error?: {
     status?: string;
+    message?: string;
     details?: Array<{
       "@type"?: string;
       errorCode?: string;
     }>;
   };
+}
+
+interface FcmSendFailureDetails {
+  errorCode: string | null;
+  fcmStatus: string | null;
+  fcmMessage: string | null;
 }
 
 interface FcmSendResult {
@@ -273,9 +280,17 @@ function fcmMessageForTarget({
   if (target.platform === "android") {
     return {
       token: target.token,
+      notification: {
+        title: activityTitle,
+        body,
+      },
       data,
       android: {
         priority: "HIGH",
+        notification: {
+          channel_id: "activity_chat",
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
       },
     };
   }
@@ -300,6 +315,10 @@ function fcmMessageForTarget({
       },
       payload: {
         aps: {
+          alert: {
+            title: activityTitle,
+            body,
+          },
           sound: "default",
           "thread-id": message.activity_id,
         },
@@ -308,15 +327,25 @@ function fcmMessageForTarget({
   };
 }
 
-async function fcmSendErrorCode(response: Response): Promise<string | null> {
+async function fcmSendFailureDetails(
+  response: Response,
+): Promise<FcmSendFailureDetails> {
   try {
     const payload = await response.json() as FcmSendErrorPayload;
     const fcmError = payload.error?.details?.find((detail) =>
       detail["@type"]?.includes("google.firebase.fcm.v1.FcmError")
     );
-    return fcmError?.errorCode ?? null;
+    return {
+      errorCode: fcmError?.errorCode ?? null,
+      fcmStatus: payload.error?.status ?? null,
+      fcmMessage: payload.error?.message ?? null,
+    };
   } catch (_error) {
-    return null;
+    return {
+      errorCode: null,
+      fcmStatus: null,
+      fcmMessage: null,
+    };
   }
 }
 
@@ -500,15 +529,17 @@ async function sendChatPushBestEffort({
       });
 
       if (!response.ok) {
-        const errorCode = await fcmSendErrorCode(response);
+        const failure = await fcmSendFailureDetails(response);
         logger.warn("push_send_failed", {
           status: response.status,
-          error_code: errorCode,
+          error_code: failure.errorCode,
+          fcm_status: failure.fcmStatus,
+          fcm_message: failure.fcmMessage,
           activity_id: message.activity_id,
           message_id: message.id,
           platform: target.platform,
         });
-        if (shouldDisablePushToken(errorCode)) {
+        if (shouldDisablePushToken(failure.errorCode)) {
           await disablePushTokenBestEffort({
             supabaseAdmin,
             token: target.token,
@@ -517,14 +548,14 @@ async function sendChatPushBestEffort({
           return {
             ok: false,
             status: response.status,
-            errorCode,
+            errorCode: failure.errorCode,
             disabledToken: true,
           } satisfies FcmSendResult;
         }
         return {
           ok: false,
           status: response.status,
-          errorCode,
+          errorCode: failure.errorCode,
           disabledToken: false,
         } satisfies FcmSendResult;
       }

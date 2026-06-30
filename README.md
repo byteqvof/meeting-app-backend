@@ -381,6 +381,11 @@ npx supabase secrets set FCM_SERVICE_ACCOUNT_JSON='<full service account json>'
 zelfde Firebase project als de iOS app. Deze server-side key is iets anders dan
 de APNs Auth Key die je in de Firebase Console uploadt voor iOS delivery.
 
+`FCM_PROJECT_ID` moet exact hetzelfde Firebase project zijn als de Flutter
+buildconfig. Voor de huidige beta is dat `toch-1dcaf`. Als de app tokens
+registreert voor `toch-1dcaf`, maar de Edge Function naar een ouder Firebase
+project stuurt, worden pushberichten door FCM geweigerd of nooit bezorgd.
+
 Voor een testomgeving mag fake phone verification tijdelijk aan:
 
 ```powershell
@@ -437,3 +442,7 @@ npm run push:test -- --token <fcm-token> --platform ios
 
 Voeg `--validate-only` toe om Firebase alleen de payload te laten valideren
 zonder de push te bezorgen.
+
+Voor iOS moet hetzelfde Firebase project ook een iOS app met bundle id
+`nl.gatoch.toch` bevatten en moet in Firebase Cloud Messaging een geldige APNs
+key of certificaat gekoppeld zijn.
