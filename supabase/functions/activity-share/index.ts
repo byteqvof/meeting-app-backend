@@ -12,10 +12,10 @@ interface ActivityShareRow {
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, {
     status,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=120",
-    },
+    headers: new Headers([
+      ["content-type", "text/html; charset=utf-8"],
+      ["cache-control", "public, max-age=120"],
+    ]),
   });
 }
 
@@ -111,8 +111,7 @@ function sharePage({
   activityId: string;
   activity: ActivityShareRow | null;
 }): string {
-  const url = new URL(req.url);
-  const canonicalUrl = url.toString();
+  const canonicalUrl = canonicalActivityUrl(activityId);
   const appLink = `meetingsapp://activity/${encodeURIComponent(activityId)}`;
   const title = activity?.title?.trim() || "TOCH activiteit";
   const date = formatDate(activity?.starts_at);
@@ -124,6 +123,7 @@ function sharePage({
   ].filter((part) => part && part.length > 0);
   const description = descriptionParts.join(" · ") ||
     "Bekijk deze activiteit in TOCH en sluit aan.";
+  const normalizedDescription = normalizeShareDescription(description);
 
   return `<!doctype html>
 <html lang="nl">
@@ -131,10 +131,10 @@ function sharePage({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} | TOCH</title>
-  <meta name="description" content="${escapeHtml(description)}">
+  <meta name="description" content="${escapeHtml(normalizedDescription)}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${escapeHtml(title)}">
-  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:description" content="${escapeHtml(normalizedDescription)}">
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
   <meta name="twitter:card" content="summary">
   <meta name="theme-color" content="#145C43">
@@ -154,7 +154,7 @@ function sharePage({
   <main>
     <div class="brand">toch<span class="dot">.</span></div>
     <h1>${escapeHtml(title)}</h1>
-    <p>${escapeHtml(description)}</p>
+    <p>${escapeHtml(normalizedDescription)}</p>
     <a href="${escapeHtml(appLink)}">Open in TOCH</a>
     <small>Werkt de knop niet? Open TOCH en zoek deze activiteit.</small>
   </main>
@@ -167,6 +167,18 @@ function sharePage({
   </script>
 </body>
 </html>`;
+}
+
+function canonicalActivityUrl(activityId: string): string {
+  const baseUrl = Deno.env.get("TOCH_PUBLIC_SHARE_BASE_URL")?.trim() ||
+    "https://gatoch.nl";
+  return `${baseUrl.replace(/\/+$/, "")}/activities/${
+    encodeURIComponent(activityId)
+  }`;
+}
+
+function normalizeShareDescription(description: string): string {
+  return description.replaceAll("\u00C2\u00B7", "·");
 }
 
 Deno.serve(async (req) => {
