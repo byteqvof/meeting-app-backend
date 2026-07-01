@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "REPLACE_WITH_APPLE_TEAM_ID.nl.gatoch.toch"
+        ],
+        "components": [
+          {
+            "/": "/activities/*",
+            "comment": "Open TOCH activity share links in the app"
+          }
+        ]
+      }
+    ]
+  }
+}
